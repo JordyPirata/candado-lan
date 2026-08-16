@@ -94,7 +94,9 @@ async function join(browser, nick, errors, query = '') {
 const text = (page, sel) => page.$eval(sel, (el) => el.innerText.toLowerCase());
 
 const server = await startServer();
-const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+// `headless: true` es la grafía portable: en puppeteer v22+ es el headless nuevo
+// (la vieja cadena 'new' ya no se acepta) y en versiones anteriores, el clásico.
+const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
 const errors = [];
 
 try {
