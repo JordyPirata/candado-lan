@@ -1,0 +1,64 @@
+name: E2E (browsers)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PUPPETEER_DIR: /tmp/cl-e2e
+
+jobs:
+  browsers:
+    name: Dos navegadores reales
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Misma clave que el workflow de tests: comparten la caché del vendor.
+      - name: Cache public/vendor
+        id: vendor
+        uses: actions/cache@v4
+        with:
+          path: public/vendor
+          key: vendor-${{ runner.os }}-${{ hashFiles('build-vendor.sh') }}
+
+      - name: Build vendor (libs + fuentes)
+        if: steps.vendor.outputs.cache-hit != 'true'
+        run: npm run vendor
+
+      - name: Cache Chrome for Testing
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-24
+
+      # Fuera del checkout, en el mismo sitio que documenta el README, para que
+      # node_modules no aparezca dentro del repo.
+      - name: Instalar puppeteer fuera del repo
+        run: |
+          mkdir -p "$PUPPETEER_DIR"
+          cd "$PUPPETEER_DIR"
+          npm init -y >/dev/null
+          npm i --no-audit --no-fund puppeteer@24
+
+      - name: Verificar que puppeteer está de verdad
+        # test/e2e-browser.mjs se salta a sí mismo con código 0 si no lo encuentra;
+        # sin esta línea el job quedaría verde sin abrir un solo navegador.
+        run: test -f "$PUPPETEER_DIR/node_modules/puppeteer/lib/esm/puppeteer/puppeteer.js"
+
+      - name: End-to-end
+        run: npm run test:e2e

@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Smoke (Node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          # Sin `cache: npm` a propósito: no hay package-lock.json y setup-node fallaría.
+
+      # public/vendor/ no está versionado y server.js se niega a arrancar sin él.
+      # La clave depende del script, así que solo se rehace cuando build-vendor.sh cambia.
+      - name: Cache public/vendor
+        id: vendor
+        uses: actions/cache@v4
+        with:
+          path: public/vendor
+          key: vendor-${{ runner.os }}-${{ hashFiles('build-vendor.sh') }}
+
+      - name: Build vendor (libs + fuentes)
+        if: steps.vendor.outputs.cache-hit != 'true'
+        run: npm run vendor
+
+      - name: Smoke tests
+        run: npm test
