@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candado y Llave — Bitcoin Script</title>
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<script src="vendor/elliptic.min.js"></script>
+<script src="vendor/crypto-js.min.js"></script>
+<!-- bip39 (bitcoinjs/bip39 v3.1.0) + polyfill de buffer, empaquetado localmente con esbuild
+     desde npm (registry.npmjs.org). No depende de ningún CDN externo. -->
+<script src="vendor/bip39.bundle.js"></script>
+<style>
+  :root{
+    --bg:#12100e;
+    --surface:#1c1815;
+    --surface-2:#231e19;
+    --ink:#ede6da;
+    --dim:#8a8175;
+    --rule:#332c25;
+    --amber:#c98a2c;
+    --verdigris:#4fa88c;
+    --rust:#b5482f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse at top left, rgba(201,138,44,0.06), transparent 45%),
+      radial-gradient(ellipse at bottom right, rgba(79,168,140,0.05), transparent 50%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.5;
+    min-height:100vh;
+    padding:0 0 80px;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px;}
+  header{padding:56px 24px 32px;text-align:center;border-bottom:1px solid var(--rule);}
+  .eyebrow{
+    font-family:'JetBrains Mono',ui-monospace,monospace;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--amber);margin-bottom:14px;
+  }
+  h1{
+    font-family:'Zilla Slab',Georgia,serif;
+    font-weight:700;
+    font-size:clamp(30px,5vw,44px);
+    margin:0 0 12px;
+    letter-spacing:-0.01em;
+  }
+  header p{color:var(--dim);max-width:560px;margin:0 auto;font-size:15px;}
+  .backlink{
+    display:inline-block;margin-top:18px;font-family:'JetBrains Mono',ui-monospace,monospace;
+    font-size:12px;color:var(--verdigris);text-decoration:none;border:1px solid var(--rule);
+    border-radius:20px;padding:6px 14px;
+  }
+  .backlink:hover{border-color:var(--verdigris);}
+
+  .lock-badge{display:flex;justify-content:center;margin:28px 0 0;}
+  .lock-svg{width:56px;height:56px;}
+  .shackle{transform-origin:28px 22px;transition:transform .5s cubic-bezier(.34,1.56,.64,1);}
+  .lock-svg.open .shackle{transform:rotate(-28deg) translate(-3px,-2px);}
+  .lock-body{fill:var(--surface-2);stroke:var(--rule);stroke-width:1.5;}
+  .lock-svg.open .lock-body{fill:var(--verdigris);fill-opacity:.15;stroke:var(--verdigris);}
+  .lock-svg.locked .lock-body{stroke:var(--amber);}
+  .lock-svg.failed .lock-body{stroke:var(--rust);}
+  .shackle-path{fill:none;stroke:var(--rule);stroke-width:5;stroke-linecap:round;}
+  .lock-svg.open .shackle-path{stroke:var(--verdigris);}
+  .lock-svg.locked .shackle-path{stroke:var(--amber);}
+  .lock-svg.failed .shackle-path{stroke:var(--rust);}
+
+  section{padding:40px 24px;border-bottom:1px solid var(--rule);}
+  section:last-of-type{border-bottom:none;}
+  .step-eyebrow{
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:6px;
+  }
+  h2{font-family:'Zilla Slab',Georgia,serif;font-size:22px;margin:0 0 6px;font-weight:600;}
+  .sub{color:var(--dim);font-size:14px;margin:0 0 20px;max-width:620px;}
+
+  textarea, input[type=text]{
+    width:100%;background:var(--surface);border:1px solid var(--rule);
+    color:var(--ink);border-radius:6px;padding:12px 14px;
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13.5px;
+    resize:none;
+  }
+  textarea:focus, input:focus{outline:none;border-color:var(--amber);}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px;}
+  button{
+    font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:13.5px;
+    background:var(--amber);color:#1a1409;border:none;border-radius:6px;
+    padding:10px 18px;cursor:pointer;transition:filter .15s, transform .15s;
+  }
+  button:hover{filter:brightness(1.1);}
+  button:active{transform:scale(.98);}
+  button.secondary{background:transparent;color:var(--ink);border:1px solid var(--rule);}
+  button.secondary:hover{border-color:var(--dim);}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+
+  .checksum-badge{
+    display:inline-flex;align-items:center;gap:6px;margin-top:12px;
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;padding:6px 12px;
+    border-radius:20px;border:1px solid var(--rule);
+  }
+  .checksum-badge.ok{color:var(--verdigris);border-color:rgba(79,168,140,.4);background:rgba(79,168,140,.08);}
+  .checksum-badge.bad{color:var(--rust);border-color:rgba(181,72,47,.4);background:rgba(181,72,47,.08);}
+  .checksum-badge .dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;margin-top:18px;}
+  .kv .k{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;color:var(--dim);
+    text-transform:uppercase;letter-spacing:.08em;padding-top:3px;}
+  .kv .v{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;word-break:break-all;
+    background:var(--surface);border:1px solid var(--rule);border-radius:5px;padding:8px 10px;}
+  .v.priv{color:var(--rust);}
+  .v.pub{color:var(--verdigris);}
+  .v.seed{color:var(--dim);font-size:11.5px;}
+
+  .script-line{
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;background:var(--surface);
+    border:1px solid var(--rule);border-radius:6px;padding:14px 16px;line-height:2;
+  }
+  .op{color:var(--amber);}
+  .data{color:var(--verdigris);}
+  .tag{
+    display:inline-block;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;
+    letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;
+    margin-bottom:10px;
+  }
+  .tag.lock{background:rgba(201,138,44,.15);color:var(--amber);border:1px solid rgba(201,138,44,.35);}
+  .tag.unlock{background:rgba(79,168,140,.15);color:var(--verdigris);border:1px solid rgba(79,168,140,.35);}
+  .tag.bip{background:rgba(138,129,117,.15);color:var(--dim);border:1px solid var(--rule);}
+
+  .checkline{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--dim);}
+  .checkline input{width:auto;}
+
+  .sim-grid{display:grid;grid-template-columns:1fr 200px;gap:24px;margin-top:20px;align-items:start;}
+  @media (max-width:640px){.sim-grid{grid-template-columns:1fr;}}
+
+  .tape{display:flex;flex-direction:column;gap:6px;}
+  .op-row{
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;padding:9px 12px;border-radius:5px;
+    background:var(--surface);border:1px solid var(--rule);color:var(--dim);
+    display:flex;justify-content:space-between;gap:10px;
+  }
+  .op-row .name{color:var(--ink);}
+  .op-row.current{border-color:var(--amber);background:rgba(201,138,44,.08);}
+  .op-row.current .name{color:var(--amber);font-weight:600;}
+  .op-row.done{opacity:.45;}
+  .op-row .desc{color:var(--dim);font-size:11.5px;text-align:right;max-width:52%;}
+
+  .stack{
+    display:flex;flex-direction:column-reverse;gap:6px;min-height:120px;
+    background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:10px;
+  }
+  .stack-label{
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--dim);text-align:center;margin-bottom:4px;
+  }
+  .stack-item{
+    font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;background:var(--surface-2);
+    border:1px solid var(--rule);border-radius:5px;padding:7px 8px;text-align:center;
+    word-break:break-all;animation:pop .25s ease;
+  }
+  .stack-item.bool-true{border-color:var(--verdigris);color:var(--verdigris);}
+  .stack-item.bool-false{border-color:var(--rust);color:var(--rust);}
+  @keyframes pop{from{transform:translateY(6px) scale(.9);opacity:0;}to{transform:none;opacity:1;}}
+
+  .result{
+    margin-top:18px;padding:14px 16px;border-radius:6px;font-family:'JetBrains Mono',ui-monospace,monospace;
+    font-size:13.5px;border:1px solid var(--rule);display:none;
+  }
+  .result.show{display:block;}
+  .result.ok{border-color:var(--verdigris);background:rgba(79,168,140,.08);color:var(--verdigris);}
+  .result.fail{border-color:var(--rust);background:rgba(181,72,47,.08);color:var(--rust);}
+
+  .note{font-size:12.5px;color:var(--dim);margin-top:10px;}
+  .note b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="eyebrow">Demo educativa · BIP39 real · No usar con fondos reales</div>
+  <h1>Candado y Llave</h1>
+  <p>De una frase semilla BIP39 válida a un par de llaves, y de ahí a ver un Script de Bitcoin bloquearse y desbloquearse, opcode por opcode.</p>
+  <div class="lock-badge">
+    <svg class="lock-svg locked" id="lockIcon" viewBox="0 0 56 56">
+      <path class="shackle shackle-path" d="M16 24 V17 a12 12 0 0 1 24 0 v7"/>
+      <rect class="lock-body" x="12" y="24" width="32" height="24" rx="4"/>
+    </svg>
+  </div>
+  <a class="backlink" href="index.html">← Volver a la sala</a>
+</header>
+
+<section>
+  <div class="step-eyebrow">Paso 1</div>
+  <div class="tag bip">BIP39 real — wordlist + checksum + PBKDF2</div>
+  <h2>Frase semilla → par de llaves</h2>
+  <p class="sub">Escribe una frase BIP39 (12 o 24 palabras de la wordlist en inglés) o genera una válida al azar. Se valida el checksum real, se deriva la seed de 64 bytes con PBKDF2-HMAC-SHA512 (el algoritmo estándar de BIP39) y — <b>sin BIP32 ni descriptores</b> — tomamos los primeros 32 bytes de esa seed como una única llave privada, solo para ver el mecanismo con claridad.</p>
+  <textarea id="phrase" rows="2" oninput="checkChecksum()"></textarea>
+  <div id="checksumBadge" class="checksum-badge" style="display:none"></div>
+  <div class="row">
+    <button onclick="randomMnemonic()">Generar frase BIP39 aleatoria</button>
+    <button class="secondary" onclick="genKeys()">Generar par de llaves</button>
+  </div>
+  <div class="kv" id="keyOut" style="display:none">
+    <div class="k">entropía</div><div class="v seed" id="entropyHex"></div>
+    <div class="k">seed (64B)</div><div class="v seed" id="seedHex"></div>
+    <div class="k">privada</div><div class="v priv" id="privHex"></div>
+    <div class="k">pública</div><div class="v pub" id="pubHex"></div>
+  </div>
+  <p class="note" id="keyNote" style="display:none">La llave privada = primeros 32 bytes de <b>PBKDF2-HMAC-SHA512(mnemónico, sal="mnemonic"+passphrase, 2048 iteraciones)</b>, interpretados como escalar sobre secp256k1. Una wallet real en cambio usa esos 64 bytes como semilla maestra BIP32 y deriva miles de pares llave por ruta (p. ej. <span style="color:var(--dim)">m/84'/0'/0'/0/0</span>) — aquí nos saltamos eso a propósito para ver un solo candado.</p>
+</section>
+
+<section id="lockSection" style="display:none">
+  <div class="step-eyebrow">Paso 2</div>
+  <div class="tag lock">Script de bloqueo — scriptPubKey (P2PKH)</div>
+  <h2>Así queda "cerrada" la moneda</h2>
+  <p class="sub">El hash de tu llave pública queda grabado en el candado. Solo quien tenga la llave privada correspondiente podrá abrirlo.</p>
+  <div class="script-line" id="lockScript"></div>
+</section>
+
+<section id="unlockSection" style="display:none">
+  <div class="step-eyebrow">Paso 3</div>
+  <div class="tag unlock">Script de desbloqueo — scriptSig</div>
+  <h2>Firma un mensaje de ejemplo</h2>
+  <p class="sub">En una transacción real esto firma el hash de la transacción; aquí firmamos un texto de ejemplo para que el mecanismo sea visible.</p>
+  <input type="text" id="msg" value="Simulación de transacción #1">
+  <div class="row">
+    <button onclick="signMsg()">Firmar y construir scriptSig</button>
+  </div>
+  <div class="script-line" id="unlockScript" style="display:none;margin-top:14px"></div>
+  <label class="checkline">
+    <input type="checkbox" id="tamper" onchange="if(sig) buildUnlockScript()">
+    Corromper la firma a propósito (para ver cómo falla el desbloqueo)
+  </label>
+</section>
+
+<section id="simSection" style="display:none">
+  <div class="step-eyebrow">Paso 4</div>
+  <h2>Ejecución paso a paso</h2>
+  <p class="sub">La máquina de Script apila y desapila valores. Avanza opcode por opcode y observa la pila (stack) de derecha.</p>
+  <div class="row">
+    <button onclick="stepSim()" id="stepBtn">Siguiente paso ▸</button>
+    <button class="secondary" onclick="resetSim()">Reiniciar</button>
+  </div>
+  <div class="sim-grid">
+    <div class="tape" id="tape"></div>
+    <div>
+      <div class="stack-label">Stack</div>
+      <div class="stack" id="stackView"></div>
+    </div>
+  </div>
+  <div class="result" id="result"></div>
+</section>
+</div>
+
+<script>
+const ec = new elliptic.ec('secp256k1');
+let priv, pub, pubHex, pubKeyHash, sig, msgHashHex;
+let ops = [], stepIndex = 0, stack = [];
+
+function sha256hex(hex){ return CryptoJS.SHA256(CryptoJS.enc.Hex.parse(hex)).toString(); }
+function sha256utf8(str){ return CryptoJS.SHA256(CryptoJS.enc.Utf8.parse(str)).toString(); }
+function ripemd160hex(hex){ return CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(hex)).toString(); }
+function hash160(hex){ return ripemd160hex(sha256hex(hex)); }
+function short(h, n=10){ return h.length>2*n ? h.slice(0,n)+'…'+h.slice(-n) : h; }
+
+function setLockIcon(state){
+  const el = document.getElementById('lockIcon');
+  el.classList.remove('locked','open','failed');
+  el.classList.add(state);
+}
+
+function randomMnemonic(){
+  document.getElementById('phrase').value = window.bip39lib.generateMnemonic();
+  checkChecksum();
+}
+
+function checkChecksum(){
+  const phrase = document.getElementById('phrase').value.trim().toLowerCase().replace(/\s+/g,' ');
+  const badge = document.getElementById('checksumBadge');
+  if(!phrase){ badge.style.display='none'; return; }
+  const valid = window.bip39lib.validateMnemonic(phrase);
+  badge.style.display = 'inline-flex';
+  badge.className = 'checksum-badge ' + (valid ? 'ok' : 'bad');
+  badge.innerHTML = `<span class="dot"></span> ${valid ? 'Checksum BIP39 válido · ' + phrase.split(' ').length + ' palabras' : 'Checksum inválido — revisa las palabras (deben ser de la wordlist BIP39 en inglés)'}`;
+  return valid;
+}
+
+function genKeys(){
+  const phrase = document.getElementById('phrase').value.trim().toLowerCase().replace(/\s+/g,' ');
+  if(!phrase){ randomMnemonic(); return; }
+  const valid = checkChecksum();
+  if(!valid){
+    alert('Esa frase no tiene un checksum BIP39 válido. Usa "Generar frase BIP39 aleatoria" o corrige las palabras.');
+    return;
+  }
+
+  const entropyHex = window.bip39lib.mnemonicToEntropy(phrase);
+  const seedHex = window.bip39lib.mnemonicToSeedSync(phrase).toString('hex');
+  const privHexFull = seedHex.slice(0, 64); // primeros 32 bytes de la seed BIP39, sin BIP32
+
+  const key = ec.keyFromPrivate(privHexFull, 'hex');
+  priv = key;
+  pubHex = key.getPublic(true, 'hex'); // compressed
+  pubKeyHash = hash160(pubHex);
+
+  document.getElementById('entropyHex').textContent = entropyHex;
+  document.getElementById('seedHex').textContent = seedHex;
+  document.getElementById('privHex').textContent = privHexFull;
+  document.getElementById('pubHex').textContent = pubHex;
+  document.getElementById('keyOut').style.display = 'grid';
+  document.getElementById('keyNote').style.display = 'block';
+
+  document.getElementById('lockScript').innerHTML =
+    `<span class="op">OP_DUP</span> <span class="op">OP_HASH160</span> ` +
+    `<span class="data">&lt;${short(pubKeyHash)}&gt;</span> ` +
+    `<span class="op">OP_EQUALVERIFY</span> <span class="op">OP_CHECKSIG</span>`;
+  document.getElementById('lockSection').style.display = 'block';
+  document.getElementById('unlockSection').style.display = 'block';
+  document.getElementById('simSection').style.display = 'none';
+  setLockIcon('locked');
+  document.getElementById('unlockScript').style.display = 'none';
+  sig = null;
+}
+
+function buildUnlockScript(){
+  const tampered = document.getElementById('tamper').checked;
+  let sigHex = sig.toDER('hex');
+  if(tampered){
+    sigHex = sigHex.slice(0, -4) + (sigHex.slice(-4) === '0000' ? '1111' : '0000');
+  }
+  document.getElementById('unlockScript').style.display = 'block';
+  document.getElementById('unlockScript').innerHTML =
+    `<span class="data">&lt;sig: ${short(sigHex)}&gt;</span> ` +
+    `<span class="data">&lt;pubkey: ${short(pubHex)}&gt;</span>`;
+  buildOps(sigHex);
+  resetSim();
+  document.getElementById('simSection').style.display = 'block';
+}
+
+function signMsg(){
+  const msg = document.getElementById('msg').value || 'mensaje';
+  msgHashHex = sha256utf8(msg);
+  sig = priv.sign(msgHashHex, {canonical:true});
+  buildUnlockScript();
+}
+
+function buildOps(sigHex){
+  ops = [
+    {name:'PUSH <sig>', desc:'Se apila la firma', fn:()=>stack.push('sig:'+short(sigHex,6))},
+    {name:'PUSH <pubkey>', desc:'Se apila la llave pública', fn:()=>stack.push('pub:'+short(pubHex,6))},
+    {name:'OP_DUP', desc:'Duplica el tope (pubkey)', fn:()=>stack.push(stack[stack.length-1])},
+    {name:'OP_HASH160', desc:'HASH160 del tope', fn:()=>{ stack.pop(); stack.push('hash160(pub):'+short(hash160(pubHex),6)); }},
+    {name:'PUSH <pubKeyHash>', desc:'Del script de bloqueo', fn:()=>stack.push('candado:'+short(pubKeyHash,6))},
+    {name:'OP_EQUALVERIFY', desc:'¿Coinciden los dos hashes?', fn:()=>{
+        const a = stack.pop(), b = stack.pop();
+        const aClean = a.split(':')[1], bClean = b.split(':')[1];
+        if(aClean !== bClean){ stack.push('❌ FALLA: hashes no coinciden'); return false; }
+      }},
+    {name:'OP_CHECKSIG', desc:'2 pops: pubkey y sig, verifica y deja TRUE/FALSE', fn:()=>{
+        stack.pop(); // pubkey
+        stack.pop(); // sig
+        let ok;
+        try{ ok = priv.verify(msgHashHex, sigHex); }catch(e){ ok = false; }
+        stack.push(ok ? 'TRUE' : 'FALSE');
+        return ok;
+      }},
+  ];
+}
+
+function renderTape(){
+  const tape = document.getElementById('tape');
+  tape.innerHTML = '';
+  ops.forEach((op, i)=>{
+    const row = document.createElement('div');
+    row.className = 'op-row' + (i===stepIndex ? ' current' : (i<stepIndex ? ' done' : ''));
+    row.innerHTML = `<span class="name">${op.name}</span><span class="desc">${op.desc}</span>`;
+    tape.appendChild(row);
+  });
+}
+
+function renderStack(){
+  const view = document.getElementById('stackView');
+  view.innerHTML = '';
+  stack.forEach(item=>{
+    const el = document.createElement('div');
+    el.className = 'stack-item' + (item==='TRUE' ? ' bool-true' : item==='FALSE' || item.startsWith('❌') ? ' bool-false' : '');
+    el.textContent = item;
+    view.appendChild(el);
+  });
+}
+
+function resetSim(){
+  stepIndex = 0; stack = [];
+  document.getElementById('result').className = 'result';
+  document.getElementById('stepBtn').disabled = false;
+  renderTape(); renderStack();
+  setLockIcon('locked');
+}
+
+function stepSim(){
+  if(stepIndex >= ops.length) return;
+  const failed = ops[stepIndex].fn() === false;
+  stepIndex++;
+  renderTape(); renderStack();
+  if(failed || stepIndex >= ops.length){
+    document.getElementById('stepBtn').disabled = true;
+    const success = !failed && stack[stack.length-1] === 'TRUE';
+    const resultEl = document.getElementById('result');
+    resultEl.classList.add('show', success ? 'ok' : 'fail');
+    resultEl.textContent = success
+      ? '✔ Script válido — la moneda se desbloquea. La firma corresponde a la llave pública cuyo hash quedó grabado en el candado.'
+      : '✘ Script inválido — el desbloqueo falla. La transacción sería rechazada.';
+    setLockIcon(success ? 'open' : 'failed');
+  }
+}
+
+// arranca con una frase válida ya generada
+randomMnemonic();
+</script>
+</body>
+</html>

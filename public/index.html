@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Candado LAN — sala P2PKH</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🔐</text></svg>">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> Candado LAN</div>
+  <span class="chip" id="chipRoom">sala —</span>
+  <span class="chip" id="chipStatus">conectando</span>
+  <span class="chip you" id="chipYou" hidden></span>
+  <button class="tiny secondary" id="btnShare">Compartir</button>
+  <a class="chip" href="guia.html" target="_blank" rel="noopener">Guía</a>
+</div>
+
+<main class="layout">
+  <div class="col-a">
+
+    <div class="round" id="roundBanner">
+      <div class="kicker" id="roundKicker">Ronda</div>
+      <h2 id="roundTitle">Sala abierta</h2>
+      <p id="roundHint">Conectando…</p>
+      <div class="round-controls" id="roundControls" hidden></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Participantes</h2>
+        <span class="count" id="playerCount">0</span>
+      </div>
+      <p class="hint">Cada quien publica su llave pública. Lo que ves debajo del nombre es su
+        <span class="mono">hash160</span>: el hash que se graba dentro del candado.</p>
+      <input type="text" id="playerFilter" placeholder="Buscar por nombre o hash160…"
+             autocomplete="off" hidden style="margin-bottom:10px">
+      <div id="players"><div class="empty">Nadie se ha presentado todavía.</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Candados</h2>
+        <span class="count" id="lockCount">0</span>
+      </div>
+      <p class="hint">Tu navegador verifica cada apertura por su cuenta: recalcula el hash de la llave
+        y comprueba la firma. No confía en lo que diga el servidor ni el emisor.</p>
+      <div class="filters" id="lockFilters" hidden></div>
+      <div id="locks"><div class="empty">Aún no hay candados. Crea uno desde la lista de participantes.</div></div>
+    </div>
+
+  </div>
+
+  <div class="col-b">
+
+    <div class="card">
+      <div class="card-head"><h2>Tu identidad</h2></div>
+      <div class="kv" id="identityBox"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="tiny secondary" id="btnSelfTest">Autodiagnóstico</button>
+        <button class="tiny secondary" id="btnRegen">Nueva identidad</button>
+        <button class="tiny secondary" id="btnRestore">Restaurar frase</button>
+      </div>
+      <div id="selfTestOut" style="margin-top:10px"></div>
+      <details style="margin-top:6px">
+        <summary>Ver frase semilla y llave privada</summary>
+        <div class="kv" id="identitySecret" style="margin-top:10px"></div>
+      </details>
+      <div class="warn">Demo educativa. Llaves generadas en tu navegador, tráfico HTTP plano en red local.
+        No la uses con fondos reales.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Marcador</h2></div>
+      <p class="hint">+10 por abrir un candado tuyo · +5 a quien lo creó.</p>
+      <div id="scores"><div class="empty">Sin puntos todavía.</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Actividad</h2></div>
+      <div class="feed" id="feed"><div class="empty">Silencio absoluto.</div></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Alta: nick + sala -->
+<div class="overlay" id="joinOverlay">
+  <div class="modal">
+    <h2>Entra a la sala</h2>
+    <p class="hint">Tu navegador generará una frase BIP39 y con ella tu par de llaves.
+      La llave privada no sale de este dispositivo.</p>
+    <label class="field" for="joinNick">Tu nombre</label>
+    <input type="text" id="joinNick" maxlength="18" placeholder="satoshi" autocomplete="off">
+    <label class="field" for="joinRoom" style="margin-top:12px">Código de sala</label>
+    <input type="text" id="joinRoom" maxlength="24" autocomplete="off">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button id="btnJoin">Generar llaves y entrar</button>
+    </div>
+    <div class="warn" id="joinError" style="color:var(--rust);display:none"></div>
+  </div>
+</div>
+
+<!-- Crear candado -->
+<div class="overlay" id="lockOverlay">
+  <div class="modal">
+    <button class="tiny secondary close" onclick="CL.ui.closeOverlay('lockOverlay')">Cerrar</button>
+    <h2>Crear candado</h2>
+    <p class="hint" id="lockTargetHint"></p>
+    <div class="script-line" id="lockPreview"></div>
+    <label class="field" for="lockLabel" style="margin-top:14px">Nota para recordarlo (opcional)</label>
+    <input type="text" id="lockLabel" maxlength="48" placeholder="5.000 sats para el café" autocomplete="off">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button id="btnCreateLock">Cerrar el candado</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ejecución del script -->
+<div class="overlay" id="runOverlay">
+  <div class="modal">
+    <button class="tiny secondary close" onclick="CL.ui.closeOverlay('runOverlay')">Cerrar</button>
+    <div style="display:flex;gap:14px;align-items:center">
+      <svg class="lock-svg big" id="runLockIcon" viewBox="0 0 56 56">
+        <path class="shackle shackle-path" d="M16 24 V17 a12 12 0 0 1 24 0 v7"/>
+        <rect class="lock-body" x="12" y="24" width="32" height="24" rx="4"/>
+      </svg>
+      <div>
+        <h2 id="runTitle">Ejecución</h2>
+        <p class="hint" id="runSubtitle" style="margin:0"></p>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <span class="tag lock">scriptPubKey — el candado</span>
+      <div class="script-line" id="runLockScript" style="margin-top:6px"></div>
+      <span class="tag unlock" style="margin-top:10px;display:inline-block">scriptSig — la llave</span>
+      <div class="script-line" id="runUnlockScript" style="margin-top:6px"></div>
+    </div>
+
+    <div class="sim-grid">
+      <div class="tape" id="runTape"></div>
+      <div>
+        <div class="stack-label">Stack</div>
+        <div class="stack" id="runStack"></div>
+      </div>
+    </div>
+
+    <div class="result" id="runResult"></div>
+    <div class="run-controls">
+      <button id="btnStep">Siguiente paso ▸</button>
+      <button class="secondary" id="btnRunAll">Ejecutar todo</button>
+      <button class="secondary" id="btnRunReset">Reiniciar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compartir -->
+<div class="overlay" id="shareOverlay">
+  <div class="modal" style="text-align:center">
+    <button class="tiny secondary close" onclick="CL.ui.closeOverlay('shareOverlay')">Cerrar</button>
+    <h2>Únanse a la sala</h2>
+    <div class="qr" id="qrBox"></div>
+    <div class="join-url" id="shareUrl"></div>
+    <p class="hint" style="margin-top:14px">Código de sala</p>
+    <div class="room-code" id="shareRoom"></div>
+    <p class="hint" style="margin-top:14px">Todos en la misma red wifi. Si el punto de acceso aísla
+      clientes entre sí, usa el hotspot del portátil.</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="vendor/elliptic.min.js"></script>
+<script src="vendor/crypto-js.min.js"></script>
+<script src="vendor/bip39.bundle.js"></script>
+<script src="vendor/qrcode.min.js"></script>
+<script src="js/keys.js"></script>
+<script src="js/script-vm.js"></script>
+<script src="js/net.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

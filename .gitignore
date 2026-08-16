@@ -1,0 +1,22 @@
+# Librerías y fuentes del navegador: no se versionan.
+# Antes de la primera sala hay que generarlas, con red:  npm run vendor
+public/vendor/
+
+# El proyecto no tiene dependencias: package.json solo declara los scripts.
+# Si instalas puppeteer aquí para el e2e, ni node_modules ni el lock entran al repo.
+node_modules/
+package-lock.json
+.npm/
+
+# sistema y editores
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# ejecución
+*.log
+.env
+.env.local

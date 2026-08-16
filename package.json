@@ -1,0 +1,36 @@
+{
+  "name": "candado-lan",
+  "version": "1.0.0",
+  "description": "A local-network room for teaching Bitcoin P2PKH live: everyone generates a BIP39 identity on their phone, locks coins to a neighbour's hash160 and watches the script run opcode by opcode.",
+  "keywords": [
+    "bitcoin",
+    "p2pkh",
+    "bip39",
+    "secp256k1",
+    "education",
+    "workshop",
+    "offline",
+    "lan"
+  ],
+  "license": "MIT",
+  "author": "JordyPirata",
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "server.js",
+    "build-vendor.sh",
+    "public/",
+    "test/"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "vendor": "bash build-vendor.sh",
+    "test": "node test/smoke.mjs",
+    "test:e2e": "node test/e2e-browser.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
